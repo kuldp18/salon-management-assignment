@@ -146,7 +146,7 @@ const staticDirectory = fileURLToPath(new URL('../dist/', import.meta.url));
 const indexFile = fileURLToPath(new URL('../dist/index.html', import.meta.url));
 if (existsSync(indexFile)) {
   app.use(express.static(staticDirectory));
-  app.get(['/', '/join', '/status/:id', '/reception', '/login', '/setup/:token', '/barber', '/barber/:name', '/display', '/admin'],
+  app.get(['/', '/join', '/status', '/status/:id', '/reception', '/login', '/setup/:token', '/barber', '/barber/:name', '/display', '/admin'],
     (_request, response) => response.sendFile(indexFile));
 }
 

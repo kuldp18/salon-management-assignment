@@ -17,7 +17,7 @@ function playBuzzer(audio) {
   tone.stop(start + 0.17);
 }
 
-export default function TvDisplay({ copy, language, languageSwitch }) {
+export default function TvDisplay({ copy, language, preferences }) {
   const { data, error, retry } = useLiveResource('/display');
   const [highlights, setHighlights] = useState([]);
   const [sound, setSound] = useState(false);
@@ -72,7 +72,7 @@ export default function TvDisplay({ copy, language, languageSwitch }) {
           <h1>{labels.title}</h1>
         </div>
         <div className="tv-heading-controls">
-          {languageSwitch}
+          <div className="tv-preferences">{preferences}</div>
           {typeof AudioContext === 'function' && (
             <button className="tv-control" type="button" onClick={toggleSound} aria-pressed={sound} aria-label={labels.buzzer}>
               {sound ? labels.buzzerOn : labels.enableBuzzer}

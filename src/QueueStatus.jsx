@@ -3,7 +3,29 @@ import { Link, useParams } from 'react-router';
 import { postJson, useLiveResource } from './api.js';
 import { formatWait } from './JoinQueue.jsx';
 
-function CalledStatus({ data, copy, number, error, lastUpdate, retry }) {
+function SavedLinkActions({ id, token, saved, onSave, copy }) {
+  const [feedback, setFeedback] = useState(null);
+  const labels = copy.savedLinks;
+
+  function toggleSavedLink() {
+    if (!onSave(id, token, !saved)) setFeedback('unavailable');
+    else setFeedback(saved ? 'removed' : 'saved');
+  }
+
+  return (
+    <div className="saved-link-actions">
+      <div className="flex flex-wrap gap-2">
+        <button className="secondary-button" type="button" onClick={toggleSavedLink}>
+          {saved ? labels.remove : labels.save}
+        </button>
+        <Link className="secondary-button inline-flex items-center" to="/status">{labels.title}</Link>
+      </div>
+      {feedback && <p className="field-hint" role="status">{labels[feedback]}</p>}
+    </div>
+  );
+}
+
+function CalledStatus({ data, copy, number, error, lastUpdate, retry, linkActions }) {
   const heading = useRef(null);
   const attempted = useRef(false);
   const { token, barberName } = data;
@@ -66,11 +88,12 @@ function CalledStatus({ data, copy, number, error, lastUpdate, retry }) {
         </div>
       )}
       <Link className="called-status-home" to="/">{copy.backHome}</Link>
+      {linkActions}
     </section>
   );
 }
 
-function StatusDetails({ id, copy, language }) {
+function StatusDetails({ id, copy, language, links, onSave }) {
   const path = `/status/${encodeURIComponent(id)}`;
   const { data, error, lastUpdatedAt, retry } = useLiveResource(path);
   const [cancelling, setCancelling] = useState(false);
@@ -80,6 +103,10 @@ function StatusDetails({ id, copy, language }) {
   const lastUpdate = error === 'apiUnavailable' && lastUpdatedAt
     ? copy.status.lastUpdate.replace('{time}', new Intl.DateTimeFormat(locale, { timeStyle: 'medium' }).format(lastUpdatedAt))
     : null;
+  const linkActions = data && (
+    <SavedLinkActions id={id} token={data.token} saved={links.some((entry) => entry.id === id)}
+      onSave={onSave} copy={copy} />
+  );
 
   async function cancel() {
     if (cancelling || !window.confirm(copy.status.confirmCancel)) return;
@@ -98,7 +125,7 @@ function StatusDetails({ id, copy, language }) {
 
   if (data?.status === 'called') {
     return <CalledStatus key={data.token} data={data} copy={copy} number={number} error={error}
-      lastUpdate={lastUpdate} retry={retry} />;
+      lastUpdate={lastUpdate} retry={retry} linkActions={linkActions} />;
   }
 
   return (
@@ -145,6 +172,7 @@ function StatusDetails({ id, copy, language }) {
           </button>
         </div>
       )}
+      {linkActions}
       <Link className="primary-link mt-8" to="/">{copy.backHome}</Link>
     </section>
   );
