@@ -63,6 +63,11 @@ Owners can pause online joining and create private staff setup links from
 `/admin`. Share each link with its intended staff member. A link expires
 after 24 hours and can be used once.
 
+Owners can also edit service names, durations, and prices, deactivate
+services for new bookings, and set barber duty. Existing bookings keep their
+service details. Clear a barber's current call or finish the service before
+taking them off duty.
+
 ## Live updates
 
 Express reads and writes the shared Atlas queue. Join, My Status, Reception,
@@ -77,6 +82,9 @@ Owners can pause or resume online joining from `/admin`. To configure the
 timed cutoff, set `closingTime` in 24-hour `HH:mm` format on the
 `salonSettings` document with `_id: "salon"`. Online joining closes 30 minutes
 before that time in Asia/Kolkata. Without a closing time, there is no timed cutoff.
+Set `openingTime` in the same format if online joining should also wait until
+opening. When both times are set, a closing time earlier than opening means
+the salon closes after midnight.
 
 ## Render
 

@@ -69,7 +69,7 @@ function BarberDashboard({ slug, copy, language }) {
       </div>
       {error && (
         <div className="join-notice mt-4" role="alert">
-          <p>{copy[error]}</p>
+          <p>{data && error === 'apiUnavailable' ? copy.reconnecting : copy[error]}</p>
           {error === 'apiUnavailable' && <button className="secondary-button" type="button" onClick={retry}>{copy.retry}</button>}
         </div>
       )}

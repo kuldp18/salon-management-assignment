@@ -31,15 +31,30 @@ export function ensureQueueIndexes(db) {
   return indexes;
 }
 
-function closingReason(settings, now) {
-  if (settings?.onlineJoiningOpen === false) return 'joiningClosed';
-  if (!closingTimePattern.test(settings?.closingTime ?? '')) return null;
+function clockMinutes(time) {
+  const [hours, minutes] = time.split(':').map(Number);
+  return hours * 60 + minutes;
+}
 
-  const [hours, minutes] = salonTime.format(now).split(':').map(Number);
-  const [closingHours, closingMinutes] = settings.closingTime.split(':').map(Number);
-  return hours * 60 + minutes >= closingHours * 60 + closingMinutes - 30
-    ? 'closingSoon'
-    : null;
+function salonHours(settings, now) {
+  if (!closingTimePattern.test(settings?.closingTime ?? '')) return { closingTime: null, salonOpen: null };
+
+  const current = clockMinutes(salonTime.format(now));
+  const closing = clockMinutes(settings.closingTime);
+  const opening = closingTimePattern.test(settings.openingTime ?? '') ? clockMinutes(settings.openingTime) : null;
+  const overnight = opening != null && closing < opening;
+  const salonOpen = opening == null ? current < closing
+    : overnight ? current >= opening || current < closing : current >= opening && current < closing;
+  const minutesToClose = closing - current + (overnight && current >= opening ? 1440 : 0);
+  const beforeOpen = opening != null && !salonOpen && (overnight || current < opening);
+  return { closingTime: settings.closingTime, salonOpen, minutesToClose, beforeOpen };
+}
+
+function closingReason(settings, now, hours = salonHours(settings, now)) {
+  if (settings?.onlineJoiningOpen === false) return 'joiningClosed';
+  if (hours.beforeOpen) return 'salonNotOpen';
+  if (hours.salonOpen === false || hours.minutesToClose <= 30) return 'closingSoon';
+  return null;
 }
 
 function remainingMinutes(entry, now) {
@@ -83,9 +98,9 @@ function readBarbers(db) {
   }).sort({ _id: 1 }).toArray();
 }
 
-function readServices(db) {
-  return db.collection('services').find({ active: true }, {
-    projection: { _id: 0, slug: 1, name: 1, durationMinutes: 1, price: 1 },
+function readServices(db, includeInactive = false) {
+  return db.collection('services').find(includeInactive ? {} : { active: true }, {
+    projection: { _id: 0, slug: 1, name: 1, durationMinutes: 1, price: 1, ...(includeInactive && { active: 1 }) },
   }).sort({ _id: 1 }).toArray();
 }
 
@@ -108,12 +123,14 @@ export async function getHome(db) {
   const [barbers, entries, settings] = await Promise.all([readBarbers(db), readActiveQueue(db), readSettings(db)]);
   const current = assignedEntries(entries);
   const now = new Date();
+  const hours = salonHours(settings, now);
 
   return {
     waitingCount: entries.filter(({ status }) => status === 'waiting').length,
     anyBarber: estimateWait(null, barbers, entries, now),
-    closedReason: closingReason(settings, now),
-    closingTime: closingTimePattern.test(settings?.closingTime ?? '') ? settings.closingTime : null,
+    closedReason: closingReason(settings, now, hours),
+    closingTime: hours.closingTime,
+    salonOpen: hours.salonOpen,
     barbers: barbers.map(({ name, slug, onBreak }) => ({
       name, status: onBreak ? 'break' : current.get(slug)?.status ?? 'available',
     })),
@@ -124,9 +141,11 @@ export async function getOwnerSettings(db) {
   const now = new Date();
   const start = new Date(`${salonDate.format(now)}T00:00:00+05:30`);
   const day = { $gte: start, $lt: new Date(start.getTime() + 86_400_000) };
-  const [settings, barbers, stats] = await Promise.all([
+  const [settings, services, barbers, occupied, stats] = await Promise.all([
     readSettings(db),
-    db.collection('barbers').find({}, { projection: { _id: 0, name: 1, slug: 1 } }).sort({ _id: 1 }).toArray(),
+    readServices(db, true),
+    db.collection('barbers').find({}, { projection: { _id: 0, name: 1, slug: 1, onDuty: 1 } }).sort({ _id: 1 }).toArray(),
+    db.collection('queueEntries').distinct('assignedBarber', { status: { $in: occupiedStatuses } }),
     db.collection('queueEntries').aggregate([
       { $match: { $or: [{ status: 'done', completedAt: day }, { status: 'no_show', noShowAt: day }] } },
       { $group: { _id: '$status', count: { $sum: 1 }, averageWait: { $avg: { $subtract: ['$startedAt', '$createdAt'] } } } },
@@ -136,7 +155,8 @@ export async function getOwnerSettings(db) {
   return {
     onlineJoiningOpen: settings?.onlineJoiningOpen !== false,
     closedReason: closingReason(settings, now),
-    barbers,
+    services,
+    barbers: barbers.map((barber) => ({ ...barber, busy: occupied.includes(barber.slug) })),
     stats: {
       served: served?.count ?? 0,
       averageWaitMinutes: served?.averageWait == null ? null : Math.round(served.averageWait / 60_000),
@@ -150,6 +170,43 @@ export async function setOnlineJoining(db, open) {
 
   await db.collection('salonSettings').updateOne({ _id: 'salon' }, { $set: { onlineJoiningOpen: open } }, { upsert: true });
   return { status: 200, body: { onlineJoiningOpen: open } };
+}
+
+export async function updateService(db, slug, input) {
+  const { name, durationMinutes, price, active } = input ?? {};
+  const en = typeof name?.en === 'string' ? name.en.trim() : '';
+  const gu = typeof name?.gu === 'string' ? name.gu.trim() : '';
+  if (!en || en.length > 80 || !gu || gu.length > 80 || !Number.isSafeInteger(durationMinutes) || durationMinutes < 1 ||
+      typeof price !== 'number' || price < 0 || !Number.isSafeInteger(Math.round(price * 100)) ||
+      Number(price.toFixed(2)) !== price || typeof active !== 'boolean') {
+    return { status: 400, body: { error: 'serviceInputInvalid' } };
+  }
+
+  const result = await db.collection('services').updateOne({ slug }, {
+    $set: { name: { en, gu }, durationMinutes, price, active },
+  });
+  return result.matchedCount
+    ? { status: 200, body: { slug } }
+    : { status: 404, body: { error: 'serviceMissing' } };
+}
+
+export async function setBarberDuty(db, slug, onDuty) {
+  if (typeof onDuty !== 'boolean') return { status: 400, body: { error: 'invalidRequest' } };
+  return db.client.withSession((session) => session.withTransaction(async () => {
+    const barbers = db.collection('barbers');
+    // Call next takes the same write lock before assigning a customer.
+    const barber = await barbers.findOneAndUpdate({ slug }, { $inc: { queueRevision: 1 } }, {
+      projection: { onDuty: 1 }, session,
+    });
+    if (!barber) return { status: 404, body: { error: 'barberUnavailable' } };
+    if (barber.onDuty === onDuty) return { status: 200, body: { onDuty } };
+    if (!onDuty && await db.collection('queueEntries').findOne(
+      { assignedBarber: slug, status: { $in: occupiedStatuses } }, { projection: { _id: 1 }, session },
+    )) return { status: 409, body: { error: 'barberDutyBusy' } };
+
+    await barbers.updateOne({ slug }, { $set: { onDuty, onBreak: false } }, { session });
+    return { status: 200, body: { onDuty } };
+  }));
 }
 
 export async function getJoinOptions(db) {
@@ -236,7 +293,7 @@ export async function joinQueue(db, input, source = 'online') {
       phone,
       services,
       durationMinutes: services.reduce((sum, service) => sum + service.durationMinutes, 0),
-      price: services.reduce((sum, service) => sum + service.price, 0),
+      price: Number(services.reduce((sum, service) => sum + service.price, 0).toFixed(2)),
       barberPreference: barber?.slug ?? null,
       source,
       status: 'waiting',

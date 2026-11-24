@@ -113,7 +113,7 @@ export default function JoinQueue({ copy, language }) {
       </div>
       {error && (
         <div className="join-notice" role="alert">
-          <p>{copy[error]}</p>
+          <p>{data && error === 'apiUnavailable' ? copy.reconnecting : copy[error]}</p>
           <button className="secondary-button" type="button" onClick={retry}>{copy.retry}</button>
         </div>
       )}

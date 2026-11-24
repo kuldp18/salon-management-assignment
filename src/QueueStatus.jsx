@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router';
 import { postJson, useLiveResource } from './api.js';
 import { formatWait } from './JoinQueue.jsx';
 
-function CalledStatus({ data, copy, number, error, retry }) {
+function CalledStatus({ data, copy, number, error, lastUpdate, retry }) {
   const heading = useRef(null);
   const attempted = useRef(false);
   const { token, barberName } = data;
@@ -60,7 +60,8 @@ function CalledStatus({ data, copy, number, error, retry }) {
       )}
       {error && (
         <div className="called-status-error" role="alert">
-          <p>{copy[error]}</p>
+          <p>{lastUpdate ? copy.reconnecting : copy[error]}</p>
+          {lastUpdate && <p>{lastUpdate}</p>}
           <button type="button" onClick={retry}>{copy.retry}</button>
         </div>
       )}
@@ -71,10 +72,14 @@ function CalledStatus({ data, copy, number, error, retry }) {
 
 function StatusDetails({ id, copy, language }) {
   const path = `/status/${encodeURIComponent(id)}`;
-  const { data, error, retry } = useLiveResource(path);
+  const { data, error, lastUpdatedAt, retry } = useLiveResource(path);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState(null);
-  const number = new Intl.NumberFormat(language === 'gu' ? 'gu-IN-u-nu-gujr' : 'en-IN');
+  const locale = language === 'gu' ? 'gu-IN-u-nu-gujr' : 'en-IN';
+  const number = new Intl.NumberFormat(locale);
+  const lastUpdate = error === 'apiUnavailable' && lastUpdatedAt
+    ? copy.status.lastUpdate.replace('{time}', new Intl.DateTimeFormat(locale, { timeStyle: 'medium' }).format(lastUpdatedAt))
+    : null;
 
   async function cancel() {
     if (cancelling || !window.confirm(copy.status.confirmCancel)) return;
@@ -92,7 +97,8 @@ function StatusDetails({ id, copy, language }) {
   }
 
   if (data?.status === 'called') {
-    return <CalledStatus key={data.token} data={data} copy={copy} number={number} error={error} retry={retry} />;
+    return <CalledStatus key={data.token} data={data} copy={copy} number={number} error={error}
+      lastUpdate={lastUpdate} retry={retry} />;
   }
 
   return (
@@ -100,7 +106,10 @@ function StatusDetails({ id, copy, language }) {
       <h1 className="text-4xl font-semibold">{copy.status.title}</h1>
       {error && (
         <div className="join-notice mt-4" role="alert">
-          <p>{copy[error]}</p>
+          <div>
+            <p>{lastUpdate ? copy.reconnecting : copy[error]}</p>
+            {lastUpdate && <p className="field-hint">{lastUpdate}</p>}
+          </div>
           {error !== 'statusMissing' && <button type="button" className="secondary-button" onClick={retry}>{copy.retry}</button>}
         </div>
       )}
@@ -111,10 +120,20 @@ function StatusDetails({ id, copy, language }) {
           <p className="text-5xl font-semibold tabular-nums">{number.format(data.token)}</p>
           <p className="mt-4 font-semibold">{copy.status.states[data.status]}</p>
           {data.position != null && (
-            <p>{copy.status[data.barberPreference ? 'barberPosition' : 'position']
-              .replace('{position}', number.format(data.position))}</p>
+            <div className="mt-3 flex items-center gap-3">
+              <span className="status-progress" aria-hidden="true" style={{ '--status-arc': `${100 / data.position}%` }} />
+              <div>
+                <p>{copy.status[data.barberPreference ? 'barberPosition' : 'position']
+                  .replace('{position}', number.format(data.position))}</p>
+                {data.wait && <p>{copy.join.wait} · {formatWait(data.wait, copy, number)}</p>}
+              </div>
+            </div>
           )}
-          {data.wait && <p>{copy.join.wait} · {formatWait(data.wait, copy, number)}</p>}
+          {!error && data.position <= 2 && data.position > 0 && data.wait?.minutes != null && (
+            <p className="queue-badge mt-3" data-status="available">
+              {data.position === 1 ? copy.status.yourNext : copy.status.startComing}
+            </p>
+          )}
           <p className="field-hint mt-4">{copy.status.keepLink}</p>
         </div>
       )}

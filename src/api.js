@@ -35,7 +35,7 @@ export function useLiveResource(path) {
           throw new Error('apiUnavailable');
         }
         const data = await response.json();
-        if (!controller.signal.aborted) setResult({ data });
+        if (!controller.signal.aborted) setResult({ data, lastUpdatedAt: Date.now() });
       } catch {
         if (!controller.signal.aborted) {
           setResult((previous) => ({ ...previous, error: 'apiUnavailable' }));

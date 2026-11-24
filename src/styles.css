@@ -481,6 +481,24 @@ html:lang(gu) {
 .called-status-home:hover,
 .called-status-error button:hover { background: #efe6f514; }
 
+.status-progress {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent) 0 var(--status-arc), var(--selected) var(--status-arc) 100%);
+}
+
+.status-progress::after {
+  content: '';
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: inherit;
+  background: var(--surface);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .called-status-token::before { animation: called-status-pulse 2.4s ease-out 2; }
 }

@@ -17,7 +17,7 @@ export default function Home({ copy, language }) {
       <p className="screen-description mt-4 max-w-xl text-lg">{labels.description}</p>
       {error && (
         <div className="join-notice mt-6" role="alert">
-          <p>{copy[error]}</p>
+          <p>{data && error === 'apiUnavailable' ? copy.reconnecting : copy[error]}</p>
           <button type="button" className="secondary-button" onClick={retry}>{copy.retry}</button>
         </div>
       )}
@@ -25,10 +25,15 @@ export default function Home({ copy, language }) {
       {data && (
         <>
           <div className="mt-6 flex flex-wrap items-baseline gap-3">
+            {data.salonOpen != null && (
+              <span className="queue-badge" data-status={data.salonOpen ? 'available' : 'break'}>
+                {data.salonOpen ? labels.salonOpen : labels.salonClosed}
+              </span>
+            )}
             <span className="queue-badge" data-status={data.closedReason ? 'break' : 'available'}>
               {data.closedReason ? copy[data.closedReason] : labels.joiningOpen}
             </span>
-            {time && <p className="field-hint">{labels.closesAt.replace('{time}', time)}</p>}
+            {time && data.salonOpen && <p className="field-hint">{labels.closesAt.replace('{time}', time)}</p>}
           </div>
           <div className="join-section mt-6 max-w-2xl">
             <h2 className="text-xl font-semibold">{labels.queue}</h2>

@@ -4,7 +4,8 @@ import express from 'express';
 import { closeDatabase, databaseConfigured, getDatabase } from './db.js';
 import {
   callNext, cancelQueueSpot, finishReceptionEntry, getBarberView, getHome, getJoinOptions, getOwnerSettings,
-  getQueueStatus, getReception, getTvDisplay, joinQueue, setBarberBreak, setOnlineJoining, updateBarberEntry,
+  getQueueStatus, getReception, getTvDisplay, joinQueue, setBarberBreak, setBarberDuty, setOnlineJoining,
+  updateBarberEntry, updateService,
 } from './queue.js';
 import { createSetupLink, requireBarber, requireOwner, requireReception, sameOriginWrite, staffRouter } from './staff.js';
 
@@ -71,6 +72,14 @@ app.get('/api/admin', async (_request, response) => {
 });
 app.post('/api/admin/online-joining', sameOriginWrite, jsonBody, async (request, response) => {
   const { status, body } = await setOnlineJoining(getDatabase(), request.body?.open);
+  response.status(status).json(body);
+});
+app.post('/api/admin/services/:slug', sameOriginWrite, jsonBody, async (request, response) => {
+  const { status, body } = await updateService(getDatabase(), request.params.slug, request.body);
+  response.status(status).json(body);
+});
+app.post('/api/admin/barbers/:slug/duty', sameOriginWrite, jsonBody, async (request, response) => {
+  const { status, body } = await setBarberDuty(getDatabase(), request.params.slug, request.body?.onDuty);
   response.status(status).json(body);
 });
 app.post('/api/admin/staff-invitations', sameOriginWrite, jsonBody, async (request, response) => {
