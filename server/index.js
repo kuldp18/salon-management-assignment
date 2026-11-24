@@ -2,8 +2,11 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { closeDatabase, databaseConfigured, getDatabase } from './db.js';
-import { callNext, finishReceptionEntry, getJoinOptions, getQueueStatus, getReception, getTvDisplay, joinQueue } from './queue.js';
-import { requireReception, sameOriginWrite, staffRouter } from './staff.js';
+import {
+  callNext, cancelQueueSpot, finishReceptionEntry, getBarberView, getJoinOptions, getQueueStatus,
+  getReception, getTvDisplay, joinQueue, setBarberBreak, updateBarberEntry,
+} from './queue.js';
+import { requireBarber, requireReception, sameOriginWrite, staffRouter } from './staff.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
@@ -51,6 +54,11 @@ app.get('/api/status/:id', async (request, response) => {
   return response.json(status);
 });
 
+app.post('/api/status/:id/cancel', sameOriginWrite, async (request, response) => {
+  const { status, body } = await cancelQueueSpot(getDatabase(), request.params.id);
+  response.status(status).json(body);
+});
+
 const jsonBody = express.json({ limit: '8kb' });
 app.use('/api/staff', jsonBody, staffRouter);
 app.use('/api/reception', requireReception);
@@ -75,6 +83,29 @@ app.post('/api/reception/entries/:token/:action', sameOriginWrite, async (reques
   return response.status(status).json(body);
 });
 
+app.get('/api/barber', requireBarber, (_request, response) => {
+  response.json({ slug: response.locals.barberSlug });
+});
+app.use('/api/barber/:slug', requireBarber);
+app.get('/api/barber/:slug', async (request, response) => {
+  const view = await getBarberView(getDatabase(), request.params.slug);
+  if (!view) return response.status(404).json({ error: 'barberUnavailable' });
+  return response.json(view);
+});
+app.post('/api/barber/:slug/break', sameOriginWrite, jsonBody, async (request, response) => {
+  const { status, body } = await setBarberBreak(getDatabase(), request.params.slug, request.body?.onBreak);
+  response.status(status).json(body);
+});
+app.post('/api/barber/:slug/entries/:token/:action', sameOriginWrite, async (request, response) => {
+  const { slug, action } = request.params;
+  const token = Number(request.params.token);
+  if (!Number.isSafeInteger(token) || token < 1 || !['start', 'done'].includes(action)) {
+    return response.status(404).json({ error: 'not_found' });
+  }
+  const { status, body } = await updateBarberEntry(getDatabase(), slug, token, action);
+  return response.status(status).json(body);
+});
+
 app.use('/api', (_request, response) => {
   response.status(404).json({ error: 'not_found' });
 });
@@ -90,7 +121,7 @@ const staticDirectory = fileURLToPath(new URL('../dist/', import.meta.url));
 const indexFile = fileURLToPath(new URL('../dist/index.html', import.meta.url));
 if (existsSync(indexFile)) {
   app.use(express.static(staticDirectory));
-  app.get(['/', '/join', '/status/:id', '/reception', '/login', '/barber/:name', '/display', '/admin'],
+  app.get(['/', '/join', '/status/:id', '/reception', '/login', '/barber', '/barber/:name', '/display', '/admin'],
     (_request, response) => response.sendFile(indexFile));
 }
 

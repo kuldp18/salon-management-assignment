@@ -4,6 +4,7 @@ import { normalizePhone, validateJoin } from '../shared/join-validation.js';
 const activeStatuses = ['waiting', 'called', 'in_chair'];
 const occupiedStatuses = ['called', 'in_chair'];
 const noShowDelayMs = 10 * 60_000;
+const privateStatusId = /^[a-f0-9]{48}$/;
 const salonTime = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
 });
@@ -249,26 +250,70 @@ export async function callNext(db, slug) {
   }));
 }
 
-export async function finishReceptionEntry(db, token, action) {
+async function finishEntry(db, identity, action) {
   const cancelled = action === 'cancel';
   const now = new Date();
   const condition = cancelled ? { status: 'waiting' } : {
     status: 'called', calledAt: { $lte: new Date(now.getTime() - noShowDelayMs) },
   };
   const queue = db.collection('queueEntries');
-  const result = await queue.updateOne({ token, ...condition }, {
+  const updated = await queue.findOneAndUpdate({ ...identity, ...condition }, {
     $set: cancelled ? { status: 'cancelled', cancelledAt: now } : { status: 'no_show', noShowAt: now },
-  });
-  if (result.modifiedCount) return { status: 200, body: { token } };
-  const entry = await queue.findOne({ token }, { projection: { status: 1 } });
+  }, { projection: { token: 1 } });
+  if (updated) return { status: 200, body: { token: updated.token } };
+  const entry = await queue.findOne(identity, { projection: { status: 1 } });
   return {
     status: entry ? 409 : 404,
     body: { error: !cancelled && entry?.status === 'called' ? 'noShowEarly' : 'entryChanged' },
   };
 }
 
+export function finishReceptionEntry(db, token, action) {
+  return finishEntry(db, { token }, action);
+}
+
+export function cancelQueueSpot(db, id) {
+  if (!privateStatusId.test(id)) return { status: 404, body: { error: 'statusMissing' } };
+  return finishEntry(db, { _id: id }, 'cancel');
+}
+
+export async function getBarberView(db, slug) {
+  const queue = db.collection('queueEntries');
+  const [barber, current, next] = await Promise.all([
+    db.collection('barbers').findOne({ slug }, { projection: { _id: 0, name: 1, onDuty: 1, onBreak: 1 } }),
+    queue.findOne({ assignedBarber: slug, status: { $in: occupiedStatuses } }, {
+      projection: { _id: 0, token: 1, status: 1, name: 1, 'services.name': 1, startedAt: 1 },
+    }),
+    queue.findOne({ status: 'waiting', barberPreference: { $in: [null, slug] } }, {
+      sort: { token: 1 }, projection: { _id: 0, token: 1, 'services.name': 1 },
+    }),
+  ]);
+  return barber && { ...barber, current, next: barber.onDuty ? next : null };
+}
+
+export async function updateBarberEntry(db, slug, token, action) {
+  const start = action === 'start';
+  const now = new Date();
+  const result = await db.collection('queueEntries').updateOne(
+    { assignedBarber: slug, token, status: start ? 'called' : 'in_chair' },
+    { $set: start ? { status: 'in_chair', startedAt: now } : { status: 'done', completedAt: now } },
+  );
+  return result.modifiedCount
+    ? { status: 200, body: { token } }
+    : { status: 409, body: { error: 'entryChanged' } };
+}
+
+export async function setBarberBreak(db, slug, onBreak) {
+  if (typeof onBreak !== 'boolean') return { status: 400, body: { error: 'invalidRequest' } };
+
+  const result = await db.collection('barbers').updateOne({ slug, onDuty: true }, { $set: { onBreak } });
+  return result.matchedCount
+    ? { status: 200, body: { onBreak } }
+    : { status: 409, body: { error: 'barberUnavailable' } };
+}
+
 export async function getQueueStatus(db, id) {
-  if (!/^[a-f0-9]{48}$/.test(id)) return null;
+  if (!privateStatusId.test(id)) return null;
 
   const entry = await db.collection('queueEntries').findOne({ _id: id }, {
     projection: { _id: 0, token: 1, status: 1, barberPreference: 1, assignedBarber: 1 },

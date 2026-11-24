@@ -18,16 +18,21 @@ async function passwordKey(password, salt) {
   return deriveKey(password, salt, 64, { N: 32768, r: 8, p: 3, maxmem: 64 * 1024 ** 2 });
 }
 
-export async function createReceptionist(db, email, password, { demo = false } = {}) {
+export async function createStaffAccount(db, email, password, { role = 'receptionist', barberSlug, demo = false } = {}) {
   const normalized = normalizeEmail(email);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized) || normalized.length > 254 ||
       typeof password !== 'string' || password.length < 15 || password.length > 128) {
     throw new Error('Provide an email and a password with 15–128 characters.');
   }
+  if (!['receptionist', 'barber'].includes(role)) throw new Error('Choose a supported staff role.');
+  if (role === 'barber' && (!barberSlug || !await db.collection('barbers').findOne({ slug: barberSlug }))) {
+    throw new Error('Choose an existing barber slug.');
+  }
+  const profile = role === 'barber' ? { role, barberSlug } : { role };
   const salt = randomBytes(16).toString('hex');
   const hash = (await passwordKey(password, salt)).toString('hex');
   const result = await db.collection('staffAccounts').updateOne(
-    { _id: normalized }, { $setOnInsert: { role: 'receptionist', salt, hash, demo, enabled: true } },
+    { _id: normalized }, { $setOnInsert: { ...profile, salt, hash, demo, enabled: true } },
     { upsert: true },
   );
   return Boolean(result.upsertedCount);
@@ -77,19 +82,28 @@ export function sameOriginWrite(request, response, next) {
   return next();
 }
 
-export async function requireReception(request, response, next) {
-  const key = sessionFrom(request);
-  if (!key) return response.status(401).json({ error: 'signInRequired' });
+function requireStaff(role) {
+  return async (request, response, next) => {
+    const key = sessionFrom(request);
+    if (!key) return response.status(401).json({ error: 'signInRequired' });
 
-  const db = getDatabase();
-  const session = await db.collection('staffSessions').findOne({ _id: key, expiresAt: { $gt: new Date() } });
-  const staff = session && await db.collection('staffAccounts').findOne({ _id: session.email }, {
-    projection: { role: 1, demo: 1, enabled: 1 },
-  });
-  if (!accountEnabled(staff)) return response.status(401).json({ error: 'signInRequired' });
-  if (staff.role !== 'receptionist') return response.status(403).json({ error: 'accessDenied' });
-  return next();
+    const db = getDatabase();
+    const session = await db.collection('staffSessions').findOne({ _id: key, expiresAt: { $gt: new Date() } });
+    const staff = session && await db.collection('staffAccounts').findOne({ _id: session.email }, {
+      projection: { role: 1, barberSlug: 1, demo: 1, enabled: 1 },
+    });
+    if (!accountEnabled(staff)) return response.status(401).json({ error: 'signInRequired' });
+    if (staff.role !== role || (role === 'barber' && (!staff.barberSlug ||
+        (request.params.slug && staff.barberSlug !== request.params.slug)))) {
+      return response.status(403).json({ error: 'accessDenied' });
+    }
+    response.locals.barberSlug = staff.barberSlug;
+    return next();
+  };
 }
+
+export const requireReception = requireStaff('receptionist');
+export const requireBarber = requireStaff('barber');
 
 export const staffRouter = Router();
 
@@ -112,7 +126,8 @@ staffRouter.post('/login', sameOriginWrite, async (request, response) => {
   const prior = sessionFrom(request);
   if (prior) await sessions.deleteOne({ _id: prior });
   await sessions.insertOne({ _id: sessionKey(secret), email, expiresAt: new Date(Date.now() + sessionDuration) });
-  response.cookie(cookie, secret, { ...cookieOptions(request), maxAge: sessionDuration }).json({ role: staff.role });
+  response.cookie(cookie, secret, { ...cookieOptions(request), maxAge: sessionDuration })
+    .json({ role: staff.role, barberSlug: staff.barberSlug });
 });
 
 staffRouter.post('/logout', sameOriginWrite, async (request, response) => {

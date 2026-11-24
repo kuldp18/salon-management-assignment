@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { closeDatabase, getDatabase } from './db.js';
 import { allocateTokens, ensureQueueIndexes } from './queue.js';
-import { createReceptionist } from './staff.js';
+import { createStaffAccount } from './staff.js';
 
 const samples = [
   { name: 'Aarav Mehta', service: 'haircut', barber: 'ravi', minutes: 80, status: 'called' },
@@ -66,7 +66,7 @@ try {
   }
   const db = getDatabase();
   await seedReception(db);
-  await createReceptionist(db, 'reception@example.test', 'ReceptionDemo!2026', { demo: true });
+  await createStaffAccount(db, 'reception@example.test', 'ReceptionDemo!2026', { demo: true });
   console.log('Eight development queue entries and the reception demo account are ready.');
 } catch (error) {
   console.error(error.constructor === Error ? error.message : 'Reception seed failed. Check Atlas and existing queue assignments.');

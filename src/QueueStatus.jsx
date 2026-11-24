@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { useLiveResource } from './api.js';
+import { postJson, useLiveResource } from './api.js';
 import { formatWait } from './JoinQueue.jsx';
 
 function CalledStatus({ data, copy, number, error, retry }) {
@@ -70,8 +70,26 @@ function CalledStatus({ data, copy, number, error, retry }) {
 }
 
 function StatusDetails({ id, copy, language }) {
-  const { data, error, retry } = useLiveResource(`/status/${encodeURIComponent(id)}`);
+  const path = `/status/${encodeURIComponent(id)}`;
+  const { data, error, retry } = useLiveResource(path);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState(null);
   const number = new Intl.NumberFormat(language === 'gu' ? 'gu-IN-u-nu-gujr' : 'en-IN');
+
+  async function cancel() {
+    if (cancelling || !window.confirm(copy.status.confirmCancel)) return;
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      const result = await postJson(`${path}/cancel`);
+      if (!result.ok) setCancelError(result.data.error ?? 'apiUnavailable');
+      if (result.ok || result.status === 409) retry();
+    } catch {
+      setCancelError('apiUnavailable');
+    } finally {
+      setCancelling(false);
+    }
+  }
 
   if (data?.status === 'called') {
     return <CalledStatus key={data.token} data={data} copy={copy} number={number} error={error} retry={retry} />;
@@ -98,6 +116,14 @@ function StatusDetails({ id, copy, language }) {
           )}
           {data.wait && <p>{copy.join.wait} · {formatWait(data.wait, copy, number)}</p>}
           <p className="field-hint mt-4">{copy.status.keepLink}</p>
+        </div>
+      )}
+      {data?.status === 'waiting' && (
+        <div className="mt-6">
+          {cancelError && <p className="field-error" role="alert">{copy[cancelError] ?? copy.apiUnavailable}</p>}
+          <button className="reception-danger" type="button" disabled={cancelling} onClick={cancel}>
+            {copy.status.cancelSpot}
+          </button>
         </div>
       )}
       <Link className="primary-link mt-8" to="/">{copy.backHome}</Link>

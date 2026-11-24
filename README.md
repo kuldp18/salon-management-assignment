@@ -43,6 +43,26 @@ for the target database, then run `npm run staff:create`. Remove those
 provisioning variables after creating the account. Demo sign-in is disabled
 on Render and in production mode.
 
+## Barber View
+
+Run `npm run seed:barbers` for development accounts `ravi@example.test`,
+`amit@example.test`, and `imran@example.test`. Each uses `BarberDemo!2026`
+and opens its own Barber View after sign-in.
+
+To provision a real barber, set `STAFF_SETUP_EMAIL`, `STAFF_SETUP_PASSWORD`,
+and `STAFF_SETUP_BARBER` to the barber's slug, such as `amit`, then run
+`npm run staff:create-barber`. Remove the provisioning variables afterward.
+
+## Live updates
+
+Express reads and writes the shared Atlas queue. Join, My Status, Reception,
+and Barber View poll every three seconds by default. Set
+`VITE_POLL_INTERVAL_MS` to change the interval. An accepted write refreshes
+the initiating screen immediately. Confirming a join opens and immediately
+loads the new My Status view.
+
+## Online joining
+
 To configure online joining, use the `salonSettings` document with
 `_id: "salon"`. Set `onlineJoiningOpen` to `false` to pause online joins.
 Set `closingTime` in 24-hour `HH:mm` format to close online joining 30 minutes

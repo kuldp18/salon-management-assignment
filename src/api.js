@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 export const apiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/+$/, '');
 const pollInterval = Number(import.meta.env.VITE_POLL_INTERVAL_MS) || 3000;
-const accessErrors = { 401: 'signInRequired', 403: 'accessDenied', 404: 'statusMissing' };
+const accessErrors = { 401: 'signInRequired', 403: 'accessDenied' };
 
 export async function postJson(path, body) {
   const response = await fetch(apiUrl + path, {
@@ -26,7 +26,8 @@ export function useLiveResource(path) {
       try {
         const response = await fetch(apiUrl + path, { signal: controller.signal });
         if (!response.ok) {
-          const code = accessErrors[response.status];
+          const code = accessErrors[response.status] ?? (response.status === 404 &&
+            (path.startsWith('/barber/') ? 'barberUnavailable' : 'statusMissing'));
           if (code) {
             if (!controller.signal.aborted) setResult({ error: code });
             return;

@@ -4,6 +4,7 @@ import { BrowserRouter, Link, NavLink, Route, Routes, useLocation, useMatch } fr
 import en from './i18n/en.js';
 import gu from './i18n/gu.js';
 import JoinQueue from './JoinQueue.jsx';
+import BarberView from './BarberView.jsx';
 import QueueStatus from './QueueStatus.jsx';
 import Reception from './Reception.jsx';
 import StaffLogin from './StaffLogin.jsx';
@@ -18,7 +19,7 @@ const screens = [
   { key: 'join', path: '/join' },
   { key: 'status', path: '/status/:id', preview: '/status/preview' },
   { key: 'reception', path: '/reception' },
-  { key: 'barber', path: '/barber/:name', preview: '/barber/ravi' },
+  { key: 'barber', path: '/barber' },
   { key: 'display', path: '/display' },
   { key: 'admin', path: '/admin' },
 ];
@@ -107,7 +108,7 @@ function App() {
       <nav className="site-navigation flex flex-wrap gap-1 py-4" id="site-navigation"
         aria-label={copy.navigation} data-open={menuOpen}>
         {screens.map(({ key, path, preview }) => (
-          <NavLink key={key} className="screen-link" to={preview ?? path} end onClick={() => setMenuOpen(false)}>
+          <NavLink key={key} className="screen-link" to={preview ?? path} end={key !== 'barber'} onClick={() => setMenuOpen(false)}>
             {copy[key].link}
           </NavLink>
         ))}
@@ -117,9 +118,10 @@ function App() {
           <Route path="/join" element={<JoinQueue copy={copy} language={language} />} />
           <Route path="/status/:id" element={<QueueStatus copy={copy} language={language} />} />
           <Route path="/reception" element={<Reception copy={copy} language={language} />} />
+          <Route path="/barber/:name?" element={<BarberView copy={copy} language={language} />} />
           <Route path="/login" element={<StaffLogin copy={copy} />} />
           <Route path="/display" element={<TvDisplay copy={copy} language={language} languageSwitch={languageSwitch} />} />
-          {screens.filter(({ key }) => !['join', 'status', 'reception', 'display'].includes(key)).map(({ key, path }) => (
+          {screens.filter(({ key }) => ['home', 'admin'].includes(key)).map(({ key, path }) => (
             <Route key={key} path={path} element={<Screen screen={key} copy={copy} />} />
           ))}
           <Route path="*" element={(
