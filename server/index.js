@@ -3,10 +3,10 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { closeDatabase, databaseConfigured, getDatabase } from './db.js';
 import {
-  callNext, cancelQueueSpot, finishReceptionEntry, getBarberView, getJoinOptions, getQueueStatus,
-  getReception, getTvDisplay, joinQueue, setBarberBreak, updateBarberEntry,
+  callNext, cancelQueueSpot, finishReceptionEntry, getBarberView, getHome, getJoinOptions, getOwnerSettings,
+  getQueueStatus, getReception, getTvDisplay, joinQueue, setBarberBreak, setOnlineJoining, updateBarberEntry,
 } from './queue.js';
-import { requireBarber, requireReception, sameOriginWrite, staffRouter } from './staff.js';
+import { createSetupLink, requireBarber, requireOwner, requireReception, sameOriginWrite, staffRouter } from './staff.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
@@ -39,6 +39,10 @@ app.get('/api/join', async (_request, response) => {
   response.json(await getJoinOptions(getDatabase()));
 });
 
+app.get('/api/home', async (_request, response) => {
+  response.json(await getHome(getDatabase()));
+});
+
 app.get('/api/display', async (_request, response) => {
   response.json(await getTvDisplay(getDatabase()));
 });
@@ -61,6 +65,18 @@ app.post('/api/status/:id/cancel', sameOriginWrite, async (request, response) =>
 
 const jsonBody = express.json({ limit: '8kb' });
 app.use('/api/staff', jsonBody, staffRouter);
+app.use('/api/admin', requireOwner);
+app.get('/api/admin', async (_request, response) => {
+  response.json(await getOwnerSettings(getDatabase()));
+});
+app.post('/api/admin/online-joining', sameOriginWrite, jsonBody, async (request, response) => {
+  const { status, body } = await setOnlineJoining(getDatabase(), request.body?.open);
+  response.status(status).json(body);
+});
+app.post('/api/admin/staff-invitations', sameOriginWrite, jsonBody, async (request, response) => {
+  const { status, body } = await createSetupLink(getDatabase(), request.body, response.locals.staffDemo);
+  response.status(status).json(body);
+});
 app.use('/api/reception', requireReception);
 app.get('/api/reception', async (_request, response) => {
   response.json(await getReception(getDatabase()));
@@ -121,7 +137,7 @@ const staticDirectory = fileURLToPath(new URL('../dist/', import.meta.url));
 const indexFile = fileURLToPath(new URL('../dist/index.html', import.meta.url));
 if (existsSync(indexFile)) {
   app.use(express.static(staticDirectory));
-  app.get(['/', '/join', '/status/:id', '/reception', '/login', '/barber', '/barber/:name', '/display', '/admin'],
+  app.get(['/', '/join', '/status/:id', '/reception', '/login', '/setup/:token', '/barber', '/barber/:name', '/display', '/admin'],
     (_request, response) => response.sendFile(indexFile));
 }
 

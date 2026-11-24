@@ -18,6 +18,7 @@ export default function StaffLogin({ copy }) {
       const result = await postJson('/staff/login', credentials);
       const { role, barberSlug } = result.data;
       if (result.ok && role === 'receptionist') navigate('/reception', { replace: true });
+      else if (result.ok && role === 'owner') navigate('/admin', { replace: true });
       else if (result.ok && role === 'barber' && barberSlug) {
         navigate(`/barber/${encodeURIComponent(barberSlug)}`, { replace: true });
       } else setError(result.data.error ?? 'accessDenied');

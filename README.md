@@ -53,6 +53,16 @@ To provision a real barber, set `STAFF_SETUP_EMAIL`, `STAFF_SETUP_PASSWORD`,
 and `STAFF_SETUP_BARBER` to the barber's slug, such as `amit`, then run
 `npm run staff:create-barber`. Remove the provisioning variables afterward.
 
+## Owner Settings
+
+Run `npm run seed:owner` for the development account `owner@example.test`
+with password `OwnerDemo!2026!`. To provision a real owner, set
+`STAFF_SETUP_EMAIL` and `STAFF_SETUP_PASSWORD` and run `npm run staff:create-owner`.
+
+Owners can pause online joining and create private staff setup links from
+`/admin`. Share each link with its intended staff member. A link expires
+after 24 hours and can be used once.
+
 ## Live updates
 
 Express reads and writes the shared Atlas queue. Join, My Status, Reception,
@@ -63,9 +73,9 @@ loads the new My Status view.
 
 ## Online joining
 
-To configure online joining, use the `salonSettings` document with
-`_id: "salon"`. Set `onlineJoiningOpen` to `false` to pause online joins.
-Set `closingTime` in 24-hour `HH:mm` format to close online joining 30 minutes
+Owners can pause or resume online joining from `/admin`. To configure the
+timed cutoff, set `closingTime` in 24-hour `HH:mm` format on the
+`salonSettings` document with `_id: "salon"`. Online joining closes 30 minutes
 before that time in Asia/Kolkata. Without a closing time, there is no timed cutoff.
 
 ## Render

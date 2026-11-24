@@ -153,11 +153,6 @@ html:lang(gu) {
   color: var(--secondary);
 }
 
-.placeholder {
-  color: var(--accent);
-  background: var(--selected);
-}
-
 .primary-link {
   color: var(--button-text);
   background: var(--button);

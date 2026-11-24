@@ -4,7 +4,9 @@ import { validateJoin } from '../shared/join-validation.js';
 import { apiUrl, useLiveResource } from './api.js';
 
 export function formatWait(wait, copy, number) {
-  if (wait?.minutes == null) return copy[wait?.reason] ?? copy.waitUnavailable;
+  if (wait?.minutes == null) {
+    return wait?.reason ? `${copy.waitUnavailable} · ${copy[wait.reason]}` : copy.waitUnavailable;
+  }
   return copy.about.replace('{minutes}', number.format(wait.minutes));
 }
 

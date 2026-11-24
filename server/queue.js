@@ -6,8 +6,12 @@ const occupiedStatuses = ['called', 'in_chair'];
 const noShowDelayMs = 10 * 60_000;
 const privateStatusId = /^[a-f0-9]{48}$/;
 const queueOrder = { token: 1 };
+const closingTimePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
 const salonTime = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+const salonDate = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
 });
 let indexes;
 
@@ -29,7 +33,7 @@ export function ensureQueueIndexes(db) {
 
 function closingReason(settings, now) {
   if (settings?.onlineJoiningOpen === false) return 'joiningClosed';
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(settings?.closingTime ?? '')) return null;
+  if (!closingTimePattern.test(settings?.closingTime ?? '')) return null;
 
   const [hours, minutes] = salonTime.format(now).split(':').map(Number);
   const [closingHours, closingMinutes] = settings.closingTime.split(':').map(Number);
@@ -95,6 +99,59 @@ function readSettings(db) {
   return db.collection('salonSettings').findOne({ _id: 'salon' });
 }
 
+function assignedEntries(entries) {
+  return new Map(entries.filter(({ status }) => status !== 'waiting')
+    .map((entry) => [entry.assignedBarber, entry]));
+}
+
+export async function getHome(db) {
+  const [barbers, entries, settings] = await Promise.all([readBarbers(db), readActiveQueue(db), readSettings(db)]);
+  const current = assignedEntries(entries);
+  const now = new Date();
+
+  return {
+    waitingCount: entries.filter(({ status }) => status === 'waiting').length,
+    anyBarber: estimateWait(null, barbers, entries, now),
+    closedReason: closingReason(settings, now),
+    closingTime: closingTimePattern.test(settings?.closingTime ?? '') ? settings.closingTime : null,
+    barbers: barbers.map(({ name, slug, onBreak }) => ({
+      name, status: onBreak ? 'break' : current.get(slug)?.status ?? 'available',
+    })),
+  };
+}
+
+export async function getOwnerSettings(db) {
+  const now = new Date();
+  const start = new Date(`${salonDate.format(now)}T00:00:00+05:30`);
+  const day = { $gte: start, $lt: new Date(start.getTime() + 86_400_000) };
+  const [settings, barbers, stats] = await Promise.all([
+    readSettings(db),
+    db.collection('barbers').find({}, { projection: { _id: 0, name: 1, slug: 1 } }).sort({ _id: 1 }).toArray(),
+    db.collection('queueEntries').aggregate([
+      { $match: { $or: [{ status: 'done', completedAt: day }, { status: 'no_show', noShowAt: day }] } },
+      { $group: { _id: '$status', count: { $sum: 1 }, averageWait: { $avg: { $subtract: ['$startedAt', '$createdAt'] } } } },
+    ]).toArray(),
+  ]);
+  const served = stats.find(({ _id }) => _id === 'done');
+  return {
+    onlineJoiningOpen: settings?.onlineJoiningOpen !== false,
+    closedReason: closingReason(settings, now),
+    barbers,
+    stats: {
+      served: served?.count ?? 0,
+      averageWaitMinutes: served?.averageWait == null ? null : Math.round(served.averageWait / 60_000),
+      noShows: stats.find(({ _id }) => _id === 'no_show')?.count ?? 0,
+    },
+  };
+}
+
+export async function setOnlineJoining(db, open) {
+  if (typeof open !== 'boolean') return { status: 400, body: { error: 'invalidRequest' } };
+
+  await db.collection('salonSettings').updateOne({ _id: 'salon' }, { $set: { onlineJoiningOpen: open } }, { upsert: true });
+  return { status: 200, body: { onlineJoiningOpen: open } };
+}
+
 export async function getJoinOptions(db) {
   const [services, barbers, queue, settings] = await Promise.all([
     readServices(db),
@@ -117,8 +174,7 @@ export async function getJoinOptions(db) {
 export async function getTvDisplay(db) {
   const [barbers, entries] = await Promise.all([readBarbers(db), readActiveQueue(db)]);
   const now = new Date();
-  const current = new Map(entries.filter(({ status }) => status !== 'waiting')
-    .map((entry) => [entry.assignedBarber, entry]));
+  const current = assignedEntries(entries);
   const next = entries.filter(({ status }) => status === 'waiting')
     .sort((a, b) => a.token - b.token).slice(0, 5);
 

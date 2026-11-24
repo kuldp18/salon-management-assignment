@@ -17,7 +17,9 @@
     "seed:reception": "node --env-file-if-exists=server/.env server/seed-reception.js",
     "staff:create": "node --env-file-if-exists=server/.env server/create-receptionist.js",
     "staff:create-barber": "node --env-file-if-exists=server/.env server/create-barber.js",
-    "seed:barbers": "npm run staff:create-barber -- --demo"
+    "seed:barbers": "npm run staff:create-barber -- --demo",
+    "staff:create-owner": "node --env-file-if-exists=server/.env server/create-owner.js",
+    "seed:owner": "npm run staff:create-owner -- --demo"
   },
   "dependencies": {
     "express": "^5.1.0",

@@ -4,10 +4,13 @@ import { BrowserRouter, Link, NavLink, Route, Routes, useLocation, useMatch } fr
 import en from './i18n/en.js';
 import gu from './i18n/gu.js';
 import JoinQueue from './JoinQueue.jsx';
+import Home from './Home.jsx';
 import BarberView from './BarberView.jsx';
+import OwnerSettings from './OwnerSettings.jsx';
 import QueueStatus from './QueueStatus.jsx';
 import Reception from './Reception.jsx';
 import StaffLogin from './StaffLogin.jsx';
+import StaffSetup from './StaffSetup.jsx';
 import TvDisplay from './TvDisplay.jsx';
 import './styles.css';
 
@@ -23,22 +26,6 @@ const screens = [
   { key: 'display', path: '/display' },
   { key: 'admin', path: '/admin' },
 ];
-
-function Screen({ screen, copy }) {
-  const { title, description } = copy[screen];
-  return (
-    <section className="panel">
-      <h1 className="text-4xl leading-tight font-semibold md:text-6xl">{title}</h1>
-      <p className="screen-description mt-4 max-w-xl text-lg">{description}</p>
-      <p className="placeholder mt-8 w-fit rounded-full px-4 py-2 text-sm font-medium">
-        {copy.placeholder}
-      </p>
-      {screen === 'home' && (
-        <Link className="primary-link mt-8" to="/join">{copy.join.link}</Link>
-      )}
-    </section>
-  );
-}
 
 function App() {
   const { key: locationKey } = useLocation();
@@ -115,15 +102,15 @@ function App() {
       </nav>
       <main>
         <Routes>
+          <Route path="/" element={<Home copy={copy} language={language} />} />
           <Route path="/join" element={<JoinQueue copy={copy} language={language} />} />
           <Route path="/status/:id" element={<QueueStatus copy={copy} language={language} />} />
           <Route path="/reception" element={<Reception copy={copy} language={language} />} />
           <Route path="/barber/:name?" element={<BarberView copy={copy} language={language} />} />
           <Route path="/login" element={<StaffLogin copy={copy} />} />
+          <Route path="/setup/:token" element={<StaffSetup copy={copy} />} />
           <Route path="/display" element={<TvDisplay copy={copy} language={language} languageSwitch={languageSwitch} />} />
-          {screens.filter(({ key }) => ['home', 'admin'].includes(key)).map(({ key, path }) => (
-            <Route key={key} path={path} element={<Screen screen={key} copy={copy} />} />
-          ))}
+          <Route path="/admin" element={<OwnerSettings copy={copy} language={language} />} />
           <Route path="*" element={(
             <section className="panel">
               <h1 className="text-4xl font-semibold">{copy.missing.title}</h1>

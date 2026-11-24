@@ -6,6 +6,8 @@ import { getDatabase } from './db.js';
 const deriveKey = promisify(scrypt);
 const sessionDuration = 8 * 60 * 60_000;
 const loginWindow = 15 * 60_000;
+const setupDuration = 24 * 60 * 60_000;
+const setupTokenPattern = /^[a-f0-9]{64}$/;
 const cookie = 'salon_staff';
 const attempts = new Map();
 let attemptSweep = 0;
@@ -18,21 +20,33 @@ async function passwordKey(password, salt) {
   return deriveKey(password, salt, 64, { N: 32768, r: 8, p: 3, maxmem: 64 * 1024 ** 2 });
 }
 
+function validEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254;
+}
+
+function validPassword(password) {
+  return typeof password === 'string' && password.length >= 15 && password.length <= 128;
+}
+
+async function passwordCredentials(password) {
+  const salt = randomBytes(16).toString('hex');
+  const hash = (await passwordKey(password, salt)).toString('hex');
+  return { salt, hash };
+}
+
 export async function createStaffAccount(db, email, password, { role = 'receptionist', barberSlug, demo = false } = {}) {
   const normalized = normalizeEmail(email);
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized) || normalized.length > 254 ||
-      typeof password !== 'string' || password.length < 15 || password.length > 128) {
+  if (!validEmail(normalized) || !validPassword(password)) {
     throw new Error('Provide an email and a password with 15–128 characters.');
   }
-  if (!['receptionist', 'barber'].includes(role)) throw new Error('Choose a supported staff role.');
+  if (!['receptionist', 'barber', 'owner'].includes(role)) throw new Error('Choose a supported staff role.');
   if (role === 'barber' && (!barberSlug || !await db.collection('barbers').findOne({ slug: barberSlug }))) {
     throw new Error('Choose an existing barber slug.');
   }
   const profile = role === 'barber' ? { role, barberSlug } : { role };
-  const salt = randomBytes(16).toString('hex');
-  const hash = (await passwordKey(password, salt)).toString('hex');
+  const credentials = await passwordCredentials(password);
   const result = await db.collection('staffAccounts').updateOne(
-    { _id: normalized }, { $setOnInsert: { ...profile, salt, hash, demo, enabled: true } },
+    { _id: normalized }, { $setOnInsert: { ...profile, ...credentials, demo, enabled: true } },
     { upsert: true },
   );
   return Boolean(result.upsertedCount);
@@ -98,14 +112,73 @@ function requireStaff(role) {
       return response.status(403).json({ error: 'accessDenied' });
     }
     response.locals.barberSlug = staff.barberSlug;
+    response.locals.staffDemo = staff.demo === true;
     return next();
   };
 }
 
 export const requireReception = requireStaff('receptionist');
 export const requireBarber = requireStaff('barber');
+export const requireOwner = requireStaff('owner');
 
 export const staffRouter = Router();
+
+export async function createSetupLink(db, input, demo) {
+  const email = normalizeEmail(input?.email);
+  const name = typeof input?.name === 'string' ? input.name.trim() : '';
+  const { role, barberSlug } = input ?? {};
+  if (!name || name.length > 80 || !validEmail(email) || !['receptionist', 'barber'].includes(role)) {
+    return { status: 400, body: { error: 'invalidInvite' } };
+  }
+  if (role === 'barber' && (typeof barberSlug !== 'string' ||
+      !await db.collection('barbers').findOne({ slug: barberSlug }, { projection: { _id: 1 } }))) {
+    return { status: 400, body: { error: 'barberUnavailable' } };
+  }
+
+  const token = randomBytes(32).toString('hex');
+  const setup = { key: sessionKey(token), expiresAt: new Date(Date.now() + setupDuration) };
+  const profile = role === 'barber' ? { role, barberSlug } : { role };
+  const accounts = db.collection('staffAccounts');
+  await accounts.createIndex({ 'setup.key': 1 }, { unique: true, sparse: true });
+  try {
+    await accounts.updateOne({ _id: email, enabled: false, setup: { $exists: true } }, {
+      $set: { ...profile, name, setup, enabled: false, demo },
+      ...(role === 'receptionist' && { $unset: { barberSlug: 1 } }),
+    }, { upsert: true });
+  } catch (error) {
+    if (error.code !== 11000 || !error.keyPattern?._id) throw error;
+    return { status: 409, body: { error: 'staffEmailTaken' } };
+  }
+
+  return { status: 201, body: { path: `/setup/${token}` } };
+}
+
+staffRouter.get('/setup/:token', async (request, response) => {
+  const { token } = request.params;
+  const account = setupTokenPattern.test(token) && await getDatabase().collection('staffAccounts').findOne({
+    enabled: false, 'setup.key': sessionKey(token), 'setup.expiresAt': { $gt: new Date() },
+  }, { projection: { _id: 1 } });
+  if (!account) return response.status(410).json({ error: 'setupUnavailable' });
+  return response.json({ status: 'valid' });
+});
+
+staffRouter.post('/setup/:token', sameOriginWrite, async (request, response) => {
+  const { token } = request.params;
+  const { password } = request.body ?? {};
+  if (!setupTokenPattern.test(token)) return response.status(410).json({ error: 'setupUnavailable' });
+  if (!validPassword(password)) return response.status(400).json({ error: 'setupPasswordInvalid' });
+
+  const accounts = getDatabase().collection('staffAccounts');
+  const match = () => ({ enabled: false, 'setup.key': sessionKey(token), 'setup.expiresAt': { $gt: new Date() } });
+  const account = await accounts.findOne(match(), { projection: { _id: 1 } });
+  if (!account) return response.status(410).json({ error: 'setupUnavailable' });
+  const credentials = await passwordCredentials(password);
+  const result = await accounts.updateOne({ _id: account._id, ...match() }, {
+    $set: { ...credentials, enabled: true }, $unset: { setup: 1 },
+  });
+  if (!result.matchedCount) return response.status(410).json({ error: 'setupUnavailable' });
+  return response.status(204).end();
+});
 
 staffRouter.post('/login', sameOriginWrite, async (request, response) => {
   if (!loginAllowed(request.ip)) return response.status(429).json({ error: 'loginThrottled' });
