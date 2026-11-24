@@ -1,5 +1,7 @@
 # Kesh Studio
 
+Deployed link: [Link](https://salon-management-assignment.onrender.com/)
+
 A bilingual salon queue with English/Gujarati and light/dark preferences.
 Guests can join the queue and follow their token through a private link.
 
