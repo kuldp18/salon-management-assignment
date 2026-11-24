@@ -5,6 +5,7 @@ const activeStatuses = ['waiting', 'called', 'in_chair'];
 const occupiedStatuses = ['called', 'in_chair'];
 const noShowDelayMs = 10 * 60_000;
 const privateStatusId = /^[a-f0-9]{48}$/;
+const queueOrder = { token: 1 };
 const salonTime = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
 });
@@ -44,7 +45,11 @@ function remainingMinutes(entry, now) {
 }
 
 function eligible(entry, barber) {
-  return !entry.barberPreference || entry.barberPreference === barber;
+  return entry.barberPreference == null || entry.barberPreference === barber;
+}
+
+function eligibleWaiting(barber) {
+  return { status: 'waiting', barberPreference: { $in: [null, barber] } };
 }
 
 function estimateWait(barber, barbers, entries, now, beforeToken = Infinity) {
@@ -195,7 +200,7 @@ export async function getReception(db) {
     db.collection('queueEntries').find({ status: { $in: activeStatuses } }, {
       projection: { _id: 0, token: 1, status: 1, name: 1, services: 1, barberPreference: 1,
         assignedBarber: 1, createdAt: 1, calledAt: 1, startedAt: 1, durationMinutes: 1 },
-    }).sort({ token: 1 }).toArray(),
+    }).sort(queueOrder).toArray(),
   ]);
   const now = new Date();
   const waiting = entries.filter((entry) => entry.status === 'waiting');
@@ -232,17 +237,20 @@ export async function callNext(db, slug) {
   await ensureQueueIndexes(db);
   const queue = db.collection('queueEntries');
   return db.client.withSession((session) => session.withTransaction(async () => {
-    const barber = await db.collection('barbers').findOneAndUpdate(
+    // Write the barber row first so concurrent calls and break changes contend on the same document.
+    const barber = await db.collection('barbers').updateOne(
       { slug, onDuty: true, onBreak: { $ne: true } }, { $inc: { queueRevision: 1 } }, { session },
     );
-    if (!barber) return { status: 409, body: { error: 'barberUnavailable' } };
-    if (await queue.findOne({ assignedBarber: slug, status: { $in: occupiedStatuses } }, { session })) {
+    if (!barber.matchedCount) return { status: 409, body: { error: 'barberUnavailable' } };
+    if (await queue.findOne({ assignedBarber: slug, status: { $in: occupiedStatuses } }, {
+      projection: { _id: 1 }, session,
+    })) {
       return { status: 409, body: { error: 'barberOccupied' } };
     }
     const called = await queue.findOneAndUpdate(
-      { status: 'waiting', barberPreference: { $in: [null, slug] } },
+      eligibleWaiting(slug),
       { $set: { status: 'called', assignedBarber: slug, calledAt: new Date() } },
-      { sort: { token: 1 }, projection: { token: 1 }, session },
+      { sort: queueOrder, projection: { token: 1 }, session },
     );
     return called
       ? { status: 200, body: { token: called.token } }
@@ -284,8 +292,8 @@ export async function getBarberView(db, slug) {
     queue.findOne({ assignedBarber: slug, status: { $in: occupiedStatuses } }, {
       projection: { _id: 0, token: 1, status: 1, name: 1, 'services.name': 1, startedAt: 1 },
     }),
-    queue.findOne({ status: 'waiting', barberPreference: { $in: [null, slug] } }, {
-      sort: { token: 1 }, projection: { _id: 0, token: 1, 'services.name': 1 },
+    queue.findOne(eligibleWaiting(slug), {
+      sort: queueOrder, projection: { _id: 0, token: 1, 'services.name': 1 },
     }),
   ]);
   return barber && { ...barber, current, next: barber.onDuty ? next : null };

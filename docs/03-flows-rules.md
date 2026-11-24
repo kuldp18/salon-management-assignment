@@ -109,3 +109,20 @@ arrival order.
 - [ ] English and Gujarati work on all seven screens without clipped text.
 - [ ] Public home and TV responses contain no customer names or phone numbers.
 - [ ] Phone, tablet, and TV stay in sync in separate browser windows.
+
+## Manual Call next scenarios
+
+Use a test queue. Add the listed entries in order with **Add walk-in**, use
+fresh phone numbers, and start each scenario with Amit on duty and idle.
+
+1. **Skip an ineligible entry.** Add one customer who chose Ravi, then one
+   who chose Any barber. Click **Call next** on Amit's card. The second
+   customer becomes Called and the first stays Waiting.
+2. **Call the oldest eligible entry.** Add one customer who chose Any
+   barber, then one who chose Amit. Click **Call next** on Amit's card.
+   The first customer becomes Called and the second stays Waiting.
+3. **Race two reception sessions.** Add two customers who chose Any barber.
+   Open Reception in two separate browser profiles and click **Call next**
+   on Amit's card in both as close together as possible. Only the older
+   token becomes Called. If both requests reach the API, the losing request gets
+   `409` with `barberOccupied`. Both screens settle on the same queue.
