@@ -26,6 +26,10 @@ html {
   --button-text: #fff;
   --danger: #9b294c;
   --amber: #805010;
+  --jade: #245f47;
+  --jade-bg: #e7f3eb;
+  --amber-bg: #fbefd9;
+  --danger-bg: #faeaf0;
   --summary-shadow: 0 8px 28px #3c264414;
   color-scheme: light;
   color: var(--text);
@@ -49,6 +53,10 @@ html[data-theme='dark'] {
   --button-text: #281836;
   --danger: #ffabc2;
   --amber: #ffd18a;
+  --jade: #a3e0bf;
+  --jade-bg: #203a32;
+  --amber-bg: #452f22;
+  --danger-bg: #482a3c;
   --summary-shadow: 0 8px 28px #110e15a0;
   color-scheme: dark;
 }
@@ -163,7 +171,8 @@ html:lang(gu) {
 
 .join-contact { @apply grid gap-4 sm:grid-cols-2; }
 .join-contact label { @apply mb-1.5 block text-sm font-semibold; }
-.join-contact input {
+.join-contact input,
+.join-contact select {
   @apply min-h-11 w-full rounded-lg border px-3;
   border-color: var(--input-border);
   background: var(--canvas);
@@ -218,3 +227,107 @@ html:lang(gu) {
   background: var(--selected);
   border-color: var(--border);
 }
+
+.staff-login { grid-template-columns: minmax(0, 1fr); }
+.reception { @apply mx-auto max-w-6xl; }
+
+.reception-header {
+  @apply mb-4 flex flex-wrap items-center justify-between gap-4;
+}
+
+.reception-header h1 {
+  @apply text-3xl leading-tight font-semibold md:text-4xl;
+  color: var(--accent);
+}
+
+.connection-state {
+  @apply mt-1 inline-flex items-center gap-2 text-sm font-medium;
+  color: var(--secondary);
+}
+
+.connection-state::before {
+  content: '';
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.connection-state[data-online='true'] { color: var(--jade); }
+
+.reception-totals {
+  @apply mb-5 grid grid-cols-3 rounded-2xl border;
+  border-color: var(--border);
+  background: var(--surface-soft);
+}
+
+.reception-totals div { @apply flex min-w-0 flex-wrap items-baseline justify-between gap-1 px-3 py-2 sm:px-4; }
+.reception-totals div + div { border-inline-start: 1px solid var(--border); }
+.reception-totals dt { @apply text-sm font-medium; color: var(--secondary); }
+.reception-totals dd { @apply text-xl font-semibold tabular-nums; color: var(--accent); }
+.reception-section { @apply mb-5; }
+.reception-section h2 { @apply mb-2.5 text-lg font-semibold; }
+.barber-cards { @apply grid gap-3 sm:grid-cols-3; }
+
+.barber-card {
+  @apply grid min-w-0 content-start gap-2 rounded-2xl border p-4;
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.barber-card-header { @apply flex flex-wrap items-center justify-between gap-2; }
+.barber-card-header h3 { @apply text-xl font-semibold; color: var(--accent); }
+.barber-card .primary-link, .barber-card .reception-danger { @apply w-fit; }
+
+.queue-badge {
+  @apply inline-flex max-w-full rounded-full px-2.5 py-1 text-sm leading-snug font-semibold;
+  color: var(--accent);
+  background: var(--selected);
+}
+
+.queue-badge[data-status='available'] { color: var(--jade); background: var(--jade-bg); }
+.queue-badge[data-status='called'], .queue-badge[data-status='break'], .queue-badge.long-wait {
+  color: var(--amber);
+  background: var(--amber-bg);
+}
+
+.barber-token { @apply text-xl font-semibold tabular-nums; }
+.barber-token span { @apply me-1 text-sm font-medium; color: var(--secondary); }
+.service-progress label { @apply text-sm; color: var(--secondary); }
+.service-progress progress { @apply mt-2 block h-2 w-full; accent-color: var(--accent); }
+
+.queue-table-wrapper {
+  @apply overflow-x-auto rounded-2xl border;
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.queue-table { @apply w-full min-w-[42rem] border-collapse text-start text-sm; }
+.queue-table thead { color: var(--secondary); background: var(--surface-soft); }
+.queue-table th, .queue-table td { @apply px-3 py-2 text-start; overflow-wrap: anywhere; }
+.queue-table tbody tr { border-block-start: 1px solid var(--border); }
+.queue-table tbody tr:hover { background: var(--surface-soft); }
+.queue-table .queue-token { @apply tabular-nums; color: var(--accent); }
+.queue-customer { @apply font-medium; }
+.queue-empty { @apply rounded-2xl border p-4; border-color: var(--border); background: var(--surface); }
+
+.reception-danger {
+  @apply min-h-11 cursor-pointer rounded-full px-3 text-sm font-semibold;
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.reception-danger:disabled, .secondary-button:disabled { cursor: not-allowed; opacity: 0.65; }
+.reception-feedback { @apply mb-3 rounded-xl px-3 py-2; color: var(--jade); background: var(--jade-bg); }
+.reception-feedback[data-error='true'] { color: var(--danger); background: var(--danger-bg); }
+
+.walk-in-dialog {
+  @apply fixed inset-0 m-auto max-h-[90dvh] w-[min(94vw,36rem)] overflow-y-auto rounded-3xl border p-5 sm:p-6;
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: var(--summary-shadow);
+}
+
+.walk-in-dialog::backdrop { background: #17121d85; }

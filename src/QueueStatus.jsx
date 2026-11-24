@@ -21,6 +21,8 @@ function StatusDetails({ id, copy, language }) {
           <p className="field-hint">{copy.status.token}</p>
           <p className="text-5xl font-semibold tabular-nums">{number.format(data.token)}</p>
           <p className="mt-4 font-semibold">{copy.status.states[data.status]}</p>
+          {data.barberName && <p>{copy.status.assignedBarber
+            .replace('{barber}', copy.barberNames[data.barberName] ?? data.barberName)}</p>}
           {data.position != null && (
             <p>{copy.status[data.barberPreference ? 'barberPosition' : 'position']
               .replace('{position}', number.format(data.position))}</p>

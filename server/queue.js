@@ -2,15 +2,21 @@ import { randomBytes } from 'node:crypto';
 import { normalizePhone, validateJoin } from '../shared/join-validation.js';
 
 const activeStatuses = ['waiting', 'called', 'in_chair'];
+const occupiedStatuses = ['called', 'in_chair'];
+const noShowDelayMs = 10 * 60_000;
 const salonTime = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
 });
 let indexes;
 
-function ensureQueueIndexes(db) {
+export function ensureQueueIndexes(db) {
   indexes ??= db.collection('queueEntries').createIndexes([
     { key: { phone: 1 }, unique: true, partialFilterExpression: { status: { $in: activeStatuses } } },
     { key: { status: 1, token: 1 } },
+    { key: { token: 1 }, unique: true },
+    { key: { assignedBarber: 1 }, unique: true, partialFilterExpression: {
+      assignedBarber: { $type: 'string' }, status: { $in: occupiedStatuses },
+    } },
   ]).catch((error) => {
     indexes = undefined;
     throw error;
@@ -67,6 +73,12 @@ function readBarbers(db) {
   }).sort({ _id: 1 }).toArray();
 }
 
+function readServices(db) {
+  return db.collection('services').find({ active: true }, {
+    projection: { _id: 0, slug: 1, name: 1, durationMinutes: 1, price: 1 },
+  }).sort({ _id: 1 }).toArray();
+}
+
 function readActiveQueue(db) {
   return db.collection('queueEntries').find({ status: { $in: activeStatuses } }, {
     projection: { _id: 0, token: 1, status: 1, durationMinutes: 1, barberPreference: 1, assignedBarber: 1, startedAt: 1 },
@@ -79,9 +91,7 @@ function readSettings(db) {
 
 export async function getJoinOptions(db) {
   const [services, barbers, queue, settings] = await Promise.all([
-    db.collection('services').find({ active: true }, {
-      projection: { _id: 0, slug: 1, name: 1, durationMinutes: 1, price: 1 },
-    }).sort({ _id: 1 }).toArray(),
+    readServices(db),
     readBarbers(db),
     readActiveQueue(db),
     readSettings(db),
@@ -98,7 +108,14 @@ export async function getJoinOptions(db) {
   };
 }
 
-export async function joinQueue(db, input) {
+export async function allocateTokens(db, count) {
+  const { value } = await db.collection('salonSettings').findOneAndUpdate(
+    { _id: 'queue-counter' }, { $inc: { value: count } }, { upsert: true, returnDocument: 'after' },
+  );
+  return value - count + 1;
+}
+
+export async function joinQueue(db, input, source = 'online') {
   const errors = validateJoin(input);
   if (Object.keys(errors).length) return { status: 400, body: { errors } };
 
@@ -110,7 +127,7 @@ export async function joinQueue(db, input) {
       slug: typeof input.barber === 'string' ? input.barber : null,
       onDuty: true,
     }),
-    readSettings(db),
+    source === 'online' ? readSettings(db) : null,
   ]);
   if (services.length !== input.services.length) errors.services = 'servicesUnavailable';
   if (input.barber != null && !barber) errors.barber = 'barberUnavailable';
@@ -127,9 +144,7 @@ export async function joinQueue(db, input) {
     return { status: 409, body: { errors: { phone: 'phoneAlreadyQueued' } } };
   }
 
-  const { value: token } = await db.collection('salonSettings').findOneAndUpdate(
-    { _id: 'queue-counter' }, { $inc: { value: 1 } }, { upsert: true, returnDocument: 'after' },
-  );
+  const token = await allocateTokens(db, 1);
   const statusId = randomBytes(24).toString('hex');
   try {
     await queue.insertOne({
@@ -141,6 +156,7 @@ export async function joinQueue(db, input) {
       durationMinutes: services.reduce((sum, service) => sum + service.durationMinutes, 0),
       price: services.reduce((sum, service) => sum + service.price, 0),
       barberPreference: barber?.slug ?? null,
+      source,
       status: 'waiting',
       createdAt: now,
     });
@@ -148,15 +164,99 @@ export async function joinQueue(db, input) {
     if (error.code !== 11000 || !error.keyPattern?.phone) throw error;
     return { status: 409, body: { errors: { phone: 'phoneAlreadyQueued' } } };
   }
-  return { status: 201, body: { statusId } };
+  return { status: 201, body: { statusId, token } };
+}
+
+export async function getReception(db) {
+  const [services, barbers, entries] = await Promise.all([
+    readServices(db),
+    readBarbers(db),
+    db.collection('queueEntries').find({ status: { $in: activeStatuses } }, {
+      projection: { _id: 0, token: 1, status: 1, name: 1, services: 1, barberPreference: 1,
+        assignedBarber: 1, createdAt: 1, calledAt: 1, startedAt: 1, durationMinutes: 1 },
+    }).sort({ token: 1 }).toArray(),
+  ]);
+  const now = new Date();
+  const waiting = entries.filter((entry) => entry.status === 'waiting');
+  return {
+    services,
+    totals: {
+      waiting: waiting.length,
+      called: entries.filter((entry) => entry.status === 'called').length,
+      inChair: entries.filter((entry) => entry.status === 'in_chair').length,
+    },
+    waiting: waiting.map((entry) => ({
+      token: entry.token, name: entry.name, services: entry.services.map(({ name }) => name),
+      barberPreference: entry.barberPreference,
+      waitMinutes: Math.max(0, Math.floor((now - entry.createdAt) / 60_000)),
+    })),
+    barbers: barbers.map((barber) => {
+      const current = entries.find((entry) => entry.assignedBarber === barber.slug && entry.status !== 'waiting');
+      const elapsed = current?.calledAt ? now - current.calledAt : 0;
+      return {
+        ...barber,
+        canCall: !barber.onBreak && !current && waiting.some((entry) => eligible(entry, barber.slug)),
+        current: current ? {
+          token: current.token, status: current.status, durationMinutes: current.durationMinutes,
+          remainingMinutes: Math.ceil(remainingMinutes(current, now)),
+          calledMinutes: Math.max(0, Math.floor(elapsed / 60_000)),
+          canMarkNoShow: current.status === 'called' && elapsed >= noShowDelayMs,
+        } : null,
+      };
+    }),
+  };
+}
+
+export async function callNext(db, slug) {
+  await ensureQueueIndexes(db);
+  const queue = db.collection('queueEntries');
+  return db.client.withSession((session) => session.withTransaction(async () => {
+    const barber = await db.collection('barbers').findOneAndUpdate(
+      { slug, onDuty: true, onBreak: { $ne: true } }, { $inc: { queueRevision: 1 } }, { session },
+    );
+    if (!barber) return { status: 409, body: { error: 'barberUnavailable' } };
+    if (await queue.findOne({ assignedBarber: slug, status: { $in: occupiedStatuses } }, { session })) {
+      return { status: 409, body: { error: 'barberOccupied' } };
+    }
+    const called = await queue.findOneAndUpdate(
+      { status: 'waiting', barberPreference: { $in: [null, slug] } },
+      { $set: { status: 'called', assignedBarber: slug, calledAt: new Date() } },
+      { sort: { token: 1 }, projection: { token: 1 }, session },
+    );
+    return called
+      ? { status: 200, body: { token: called.token } }
+      : { status: 409, body: { error: 'noEligibleEntry' } };
+  }));
+}
+
+export async function finishReceptionEntry(db, token, action) {
+  const cancelled = action === 'cancel';
+  const now = new Date();
+  const condition = cancelled ? { status: 'waiting' } : {
+    status: 'called', calledAt: { $lte: new Date(now.getTime() - noShowDelayMs) },
+  };
+  const queue = db.collection('queueEntries');
+  const result = await queue.updateOne({ token, ...condition }, {
+    $set: cancelled ? { status: 'cancelled', cancelledAt: now } : { status: 'no_show', noShowAt: now },
+  });
+  if (result.modifiedCount) return { status: 200, body: { token } };
+  const entry = await queue.findOne({ token }, { projection: { status: 1 } });
+  return {
+    status: entry ? 409 : 404,
+    body: { error: !cancelled && entry?.status === 'called' ? 'noShowEarly' : 'entryChanged' },
+  };
 }
 
 export async function getQueueStatus(db, id) {
   if (!/^[a-f0-9]{48}$/.test(id)) return null;
 
   const entry = await db.collection('queueEntries').findOne({ _id: id }, {
-    projection: { _id: 0, token: 1, status: 1, barberPreference: 1 },
+    projection: { _id: 0, token: 1, status: 1, barberPreference: 1, assignedBarber: 1 },
   });
+  if (entry?.status === 'called' && entry.assignedBarber) {
+    const barber = await db.collection('barbers').findOne({ slug: entry.assignedBarber }, { projection: { name: 1 } });
+    return { token: entry.token, status: entry.status, barberName: barber?.name };
+  }
   if (!entry || entry.status !== 'waiting') return entry;
 
   const [barbers, queue] = await Promise.all([readBarbers(db), readActiveQueue(db)]);

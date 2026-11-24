@@ -30,6 +30,19 @@ The frontend shell and API health endpoint work without Atlas credentials. Use
 `GET /api/ready` to check Atlas connectivity and `npm run seed` to add the
 sample services and barbers. The seed leaves existing matching records intact.
 
+## Reception
+
+Run `npm run seed:reception` with a development database to add eight sample
+customers and the receptionist demo account. Then open `/reception` and sign
+in with `reception@example.test` and `ReceptionDemo!2026`. The seed is
+repeatable and preserves changes to existing demo entries. Use a separate
+database for the live salon.
+
+For a real receptionist, set `STAFF_SETUP_EMAIL` and `STAFF_SETUP_PASSWORD`
+for the target database, then run `npm run staff:create`. Remove those
+provisioning variables after creating the account. Demo sign-in is disabled
+on Render and in production mode.
+
 To configure online joining, use the `salonSettings` document with
 `_id: "salon"`. Set `onlineJoiningOpen` to `false` to pause online joins.
 Set `closingTime` in 24-hour `HH:mm` format to close online joining 30 minutes

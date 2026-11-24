@@ -3,9 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, NavLink, Route, Routes } from 'react-router';
 import en from './i18n/en.js';
 import gu from './i18n/gu.js';
-import { apiUrl } from './api.js';
 import JoinQueue from './JoinQueue.jsx';
 import QueueStatus from './QueueStatus.jsx';
+import Reception from './Reception.jsx';
+import StaffLogin from './StaffLogin.jsx';
 import './styles.css';
 
 const messages = { en, gu };
@@ -21,25 +22,6 @@ const screens = [
   { key: 'admin', path: '/admin' },
 ];
 
-function ApiConnection({ copy }) {
-  const [status, setStatus] = useState('apiChecking');
-
-  useEffect(() => {
-    const request = new AbortController();
-    fetch(`${apiUrl}/health`, { signal: request.signal })
-      .then(async (response) => {
-        const body = await response.json();
-        setStatus(response.ok && body.status === 'ok' ? 'apiConnected' : 'apiUnavailable');
-      })
-      .catch(() => {
-        if (!request.signal.aborted) setStatus('apiUnavailable');
-      });
-    return () => request.abort();
-  }, []);
-
-  return <p className="mt-6 font-medium" role="status">{copy[status]}</p>;
-}
-
 function Screen({ screen, copy }) {
   const { title, description } = copy[screen];
   const display = screen === 'display';
@@ -54,7 +36,6 @@ function Screen({ screen, copy }) {
       {screen === 'home' && (
         <Link className="primary-link mt-8" to="/join">{copy.join.link}</Link>
       )}
-      {screen === 'reception' && <ApiConnection copy={copy} />}
     </section>
   );
 }
@@ -112,7 +93,9 @@ function App() {
         <Routes>
           <Route path="/join" element={<JoinQueue copy={copy} language={language} />} />
           <Route path="/status/:id" element={<QueueStatus copy={copy} language={language} />} />
-          {screens.filter(({ key }) => key !== 'join' && key !== 'status').map(({ key, path }) => (
+          <Route path="/reception" element={<Reception copy={copy} language={language} />} />
+          <Route path="/login" element={<StaffLogin copy={copy} />} />
+          {screens.filter(({ key }) => !['join', 'status', 'reception'].includes(key)).map(({ key, path }) => (
             <Route key={key} path={path} element={<Screen screen={key} copy={copy} />} />
           ))}
           <Route path="*" element={(

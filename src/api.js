@@ -2,6 +2,17 @@ import { useEffect, useState } from 'react';
 
 export const apiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/+$/, '');
 const pollInterval = Number(import.meta.env.VITE_POLL_INTERVAL_MS) || 3000;
+const accessErrors = { 401: 'signInRequired', 403: 'accessDenied', 404: 'statusMissing' };
+
+export async function postJson(path, body) {
+  const response = await fetch(apiUrl + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = response.status === 204 ? {} : await response.json();
+  return { ok: response.ok, status: response.status, data };
+}
 
 export function useLiveResource(path) {
   const [result, setResult] = useState({});
@@ -14,14 +25,19 @@ export function useLiveResource(path) {
     async function refresh() {
       try {
         const response = await fetch(apiUrl + path, { signal: controller.signal });
-        if (!response.ok) throw new Error(response.status === 404 ? 'statusMissing' : 'apiUnavailable');
+        if (!response.ok) {
+          const code = accessErrors[response.status];
+          if (code) {
+            if (!controller.signal.aborted) setResult({ error: code });
+            return;
+          }
+          throw new Error('apiUnavailable');
+        }
         const data = await response.json();
         if (!controller.signal.aborted) setResult({ data });
-      } catch (error) {
+      } catch {
         if (!controller.signal.aborted) {
-          const code = error.message === 'statusMissing' ? 'statusMissing' : 'apiUnavailable';
-          setResult((previous) => ({ ...previous, error: code }));
-          if (code === 'statusMissing') return;
+          setResult((previous) => ({ ...previous, error: 'apiUnavailable' }));
         }
       }
       if (!controller.signal.aborted) timer = setTimeout(refresh, pollInterval);
