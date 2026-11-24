@@ -5,6 +5,31 @@ Deployed link: [Link](https://salon-management-assignment.onrender.com/)
 A bilingual salon queue with English/Gujarati and light/dark preferences.
 Guests can join the queue and follow their token through a private link.
 
+## Demo logins
+
+Sign in at `/login` on your local development instance. Render and production
+use provisioned staff accounts.
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Reception | `reception@example.test` | `ReceptionDemo!2026` |
+| Barber · Ravi | `ravi@example.test` | `BarberDemo!2026` |
+| Barber · Amit | `amit@example.test` | `BarberDemo!2026` |
+| Barber · Imran | `imran@example.test` | `BarberDemo!2026` |
+| Owner | `owner@example.test` | `OwnerDemo!2026!` |
+
+With your development database configured, run these from the repo root.
+
+```sh
+npm run seed
+npm run seed:reception
+npm run seed:barbers
+npm run seed:owner
+```
+
+`seed:reception` also adds eight sample queue entries. Rerunning it preserves
+changes to existing entries.
+
 ## Run locally
 
 With Node.js 22.12 or newer, run these commands from the project root.
@@ -34,22 +59,11 @@ sample services and barbers. The seed leaves existing matching records intact.
 
 ## Reception
 
-Run `npm run seed:reception` with a development database to add eight sample
-customers and the receptionist demo account. Then open `/reception` and sign
-in with `reception@example.test` and `ReceptionDemo!2026`. The seed is
-repeatable and preserves changes to existing demo entries. Use a separate
-database for the live salon.
-
 For a real receptionist, set `STAFF_SETUP_EMAIL` and `STAFF_SETUP_PASSWORD`
 for the target database, then run `npm run staff:create`. Remove those
-provisioning variables after creating the account. Demo sign-in is disabled
-on Render and in production mode.
+provisioning variables after creating the account.
 
 ## Barber View
-
-Run `npm run seed:barbers` for development accounts `ravi@example.test`,
-`amit@example.test`, and `imran@example.test`. Each uses `BarberDemo!2026`
-and opens its own Barber View after sign-in.
 
 To provision a real barber, set `STAFF_SETUP_EMAIL`, `STAFF_SETUP_PASSWORD`,
 and `STAFF_SETUP_BARBER` to the barber's slug, such as `amit`, then run
@@ -57,9 +71,8 @@ and `STAFF_SETUP_BARBER` to the barber's slug, such as `amit`, then run
 
 ## Owner Settings
 
-Run `npm run seed:owner` for the development account `owner@example.test`
-with password `OwnerDemo!2026!`. To provision a real owner, set
-`STAFF_SETUP_EMAIL` and `STAFF_SETUP_PASSWORD` and run `npm run staff:create-owner`.
+To provision a real owner, set `STAFF_SETUP_EMAIL` and `STAFF_SETUP_PASSWORD`
+and run `npm run staff:create-owner`.
 
 Owners can pause online joining and create private staff setup links from
 `/admin`. Share each link with its intended staff member. A link expires
