@@ -88,13 +88,14 @@
 
 ## 6. Waiting Area TV (/display)
 
+- See the [TV layout sketch](tv-sketch.png) for the barber and waiting-list
+  hierarchy.
 - Use a dark aubergine canvas #24162E, ivory text, and lilac emphasis for
   newly called tokens. Keep the two main sections visible together on a TV.
 - Show each on-duty barber, their status, and their current token. Show the
   next five waiting tokens with approximate times.
-- When a new token is called, briefly highlight it and play a soft chime
-  if sound has been enabled. Provide an “Enable sound” control for browsers
-  that require a user interaction.
+- When a new token is called, briefly highlight it. Play one short, quiet
+  buzzer tone if sound is enabled through the “Enable buzzer” control.
 - Show tokens only for customers. Use large type readable from five metres.
   Check the layout at 1080p and verify viewing distance on the actual TV.
 

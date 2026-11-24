@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { closeDatabase, databaseConfigured, getDatabase } from './db.js';
-import { callNext, finishReceptionEntry, getJoinOptions, getQueueStatus, getReception, joinQueue } from './queue.js';
+import { callNext, finishReceptionEntry, getJoinOptions, getQueueStatus, getReception, getTvDisplay, joinQueue } from './queue.js';
 import { requireReception, sameOriginWrite, staffRouter } from './staff.js';
 
 const app = express();
@@ -34,6 +34,10 @@ app.get('/api/ready', async (_request, response) => {
 
 app.get('/api/join', async (_request, response) => {
   response.json(await getJoinOptions(getDatabase()));
+});
+
+app.get('/api/display', async (_request, response) => {
+  response.json(await getTvDisplay(getDatabase()));
 });
 
 app.post('/api/join', express.json({ limit: '8kb' }), async (request, response) => {

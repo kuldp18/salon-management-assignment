@@ -108,6 +108,26 @@ export async function getJoinOptions(db) {
   };
 }
 
+export async function getTvDisplay(db) {
+  const [barbers, entries] = await Promise.all([readBarbers(db), readActiveQueue(db)]);
+  const now = new Date();
+  const current = new Map(entries.filter(({ status }) => status !== 'waiting')
+    .map((entry) => [entry.assignedBarber, entry]));
+  const next = entries.filter(({ status }) => status === 'waiting')
+    .sort((a, b) => a.token - b.token).slice(0, 5);
+
+  return {
+    barbers: barbers.map(({ slug, name, onBreak }) => {
+      const entry = current.get(slug);
+      return { name, status: entry?.status ?? (onBreak ? 'break' : 'available'), token: entry?.token ?? null };
+    }),
+    next: next.map(({ token, barberPreference }) => ({
+      token,
+      waitMinutes: estimateWait(barberPreference, barbers, entries, now, token).minutes,
+    })),
+  };
+}
+
 export async function allocateTokens(db, count) {
   const { value } = await db.collection('salonSettings').findOneAndUpdate(
     { _id: 'queue-counter' }, { $inc: { value: count } }, { upsert: true, returnDocument: 'after' },
