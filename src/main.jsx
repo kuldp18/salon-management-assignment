@@ -1,6 +1,6 @@
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Link, NavLink, Route, Routes } from 'react-router';
+import { BrowserRouter, Link, NavLink, Route, Routes, useLocation } from 'react-router';
 import en from './i18n/en.js';
 import gu from './i18n/gu.js';
 import JoinQueue from './JoinQueue.jsx';
@@ -41,6 +41,9 @@ function Screen({ screen, copy }) {
 }
 
 function App() {
+  const { key: locationKey } = useLocation();
+  const menuToggle = useRef(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [language, setLanguage] = useState(() =>
     localStorage.getItem(languageKey) === 'gu' ? 'gu' : 'en',
   );
@@ -49,6 +52,10 @@ function App() {
     return preference ? preference === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
   const copy = messages[language];
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [locationKey]);
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -62,13 +69,18 @@ function App() {
   }, [dark]);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pb-10 sm:px-8">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] py-5">
+    <div className="mx-auto max-w-6xl px-4 pb-10 sm:px-8" onKeyDown={(event) => {
+      if (event.key === 'Escape' && menuOpen) {
+        setMenuOpen(false);
+        menuToggle.current?.focus();
+      }
+    }}>
+      <header className="site-header flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] py-5">
         <Link to="/" className="brand-link inline-flex min-h-11 items-center gap-3 text-xl font-semibold">
           <span aria-hidden="true" className="brand-mark">✦</span>
           {copy.brand}
         </Link>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="site-preferences flex flex-wrap items-center gap-2">
           <div className="language-switch" role="group" aria-label={copy.language}>
             <button type="button" lang="en" aria-pressed={language === 'en'} onClick={() => setLanguage('en')}>
               English
@@ -81,10 +93,16 @@ function App() {
             <span aria-hidden="true">☾</span> {copy.darkMode}
           </button>
         </div>
+        <button className="mobile-nav-toggle" type="button" ref={menuToggle}
+          aria-label={copy.menu} aria-controls="site-navigation" aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((open) => !open)}>
+          <span className="mobile-nav-icon" aria-hidden="true"><span /><span /><span /></span>
+        </button>
       </header>
-      <nav className="flex flex-wrap gap-1 py-4" aria-label={copy.navigation}>
+      <nav className="site-navigation flex flex-wrap gap-1 py-4" id="site-navigation"
+        aria-label={copy.navigation} data-open={menuOpen}>
         {screens.map(({ key, path, preview }) => (
-          <NavLink key={key} className="screen-link" to={preview ?? path} end>
+          <NavLink key={key} className="screen-link" to={preview ?? path} end onClick={() => setMenuOpen(false)}>
             {copy[key].link}
           </NavLink>
         ))}

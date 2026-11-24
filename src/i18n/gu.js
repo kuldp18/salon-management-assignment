@@ -3,6 +3,7 @@ export default {
   language: 'ભાષા',
   darkMode: 'ડાર્ક મોડ',
   navigation: 'સલૂનનાં પાનાં',
+  menu: 'નેવિગેશન મેનુ',
   placeholder: 'આ પાનું હજી તૈયાર થઈ રહ્યું છે.',
   backHome: 'મુખ્ય પાને પાછા જાઓ',
   apiChecking: 'કતાર સાથે જોડાઈ રહ્યા છીએ…',

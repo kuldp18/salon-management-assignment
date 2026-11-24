@@ -3,6 +3,7 @@ export default {
   language: 'Language',
   darkMode: 'Dark mode',
   navigation: 'Salon screens',
+  menu: 'Navigation menu',
   placeholder: 'This screen is a placeholder.',
   backHome: 'Back to home',
   apiChecking: 'Connecting to the queue…',
